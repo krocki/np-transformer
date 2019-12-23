@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-# author: kmrocki
-# based on the original code by A.Karpathy (char-rnn)
+# author: krocki
 
 from __future__ import print_function
 import numpy as np
@@ -93,20 +92,27 @@ if __name__ == "__main__":
 
   start = time.time()
 
-  # combine x + positional
-  xs = inputs
-  save_arr('xs.png', xs.T)
-  es = inputs + pos
+  # encoder
+  # 'stage' 1
+  xs = inputs # raw embedding
+  es = inputs + pos # + positional encoding
   es = es.T
+
+  save_arr('xs.png', xs.T)
   save_arr('es.png', es)
 
-  vs = np.dot(Wev, es)
-  qs = np.dot(Weq, es)
-  ks = np.dot(Wek, es)
+  # 'stage' 2
+  vs = np.dot(Wev, es) # V
+  qs = np.dot(Weq, es) # Q
+  ks = np.dot(Wek, es) # K
 
+  # attention (Q, K, V)
   att = np.dot(qs, ks.T) / np.sqrt(HN)
   att_sm = softmax(att)
   zs = np.dot(att_sm, vs)
+
+  # 'stage' 3
+  # fc
 
   save_arr('vs.png', vs)
   save_arr('qs.png', qs)
