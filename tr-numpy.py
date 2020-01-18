@@ -11,11 +11,6 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
 
-try:
-  xrange          # Python 2
-except NameError:
-  xrange = range  # Python 3
-
 def save_arr(fname, arr):
   img = plt.imshow((arr), cmap='viridis', interpolation='nearest')
   plt.xticks([]),plt.yticks([])
@@ -71,6 +66,7 @@ if __name__ == "__main__":
   Weq = np.random.randn(HN, M)*0.01 # emb -> query
   Wek = np.random.randn(HN, M)*0.01 # emb -> key
   ######
+  Wd = np.random.randn(M, HN)*0.01 # decoder
 
   char_mat = np.eye(M)
   n = 0
@@ -94,6 +90,7 @@ if __name__ == "__main__":
 
   # encoder
   # 'stage' 1
+  ts = targets
   xs = inputs # raw embedding
   es = inputs + pos # + positional encoding
   es = es.T
@@ -101,15 +98,33 @@ if __name__ == "__main__":
   save_arr('xs.png', xs.T)
   save_arr('es.png', es)
 
+  save_arr('Wev.png', Wev)
+  save_arr('Weq.png', Weq)
+  save_arr('Wek.png', Wek)
+
   # 'stage' 2
   vs = np.dot(Wev, es) # V
   qs = np.dot(Weq, es) # Q
   ks = np.dot(Wek, es) # K
 
+  print('v')
+  print(vs.shape)
+  save_arr('vs.png', vs)
+  print('q')
+  print(qs.shape)
+  save_arr('qs.png', qs)
+  print('k')
+  print(ks.shape)
+  save_arr('ks.png', ks)
+
   # attention (Q, K, V)
-  att = np.dot(qs, ks.T) / np.sqrt(HN)
-  att_sm = softmax(att)
-  zs = np.dot(att_sm, vs)
+  att = np.dot(qs, ks.T)
+  print(att.shape)
+  save_arr('att.png', att)
+
+  att = att / np.sqrt(HN)
+  att_sm = softmax(att) # N x N
+  zs = np.dot(att_sm, vs) # Z ->  N x S
 
   # 'stage' 3
   # fc
@@ -120,3 +135,23 @@ if __name__ == "__main__":
   save_arr('att.png', att)
   save_arr('att_sm.png', att_sm)
   save_arr('zs.png', zs)
+
+  # decoder
+
+  ys = np.dot(Wd, zs)
+
+  save_arr('Wd.png', Wd)
+  save_arr('ys.png', ys)
+
+  ps = softmax(ys).T
+  save_arr('ps.png', ps)
+
+  ce = np.sum(-np.log(ps[ts>0]))
+  print('ce = {}'.format(ce))
+  dy = ps - ts
+  dy = dy.T
+  dWd = np.dot(dy, zs.T)
+  dz = np.dot(Wd.T, dy)
+  save_arr('dz.png', dz)
+  save_arr('Wd.png', Wd)
+  save_arr('dWd.png', dWd)
