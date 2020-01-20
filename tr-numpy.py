@@ -43,8 +43,8 @@ def train(inputs, targets):
 if __name__ == "__main__":
   ### parse args
   parser = argparse.ArgumentParser(description='')
-  parser.add_argument('-S', type=int, default = 10, help='seq len')
-  parser.add_argument('-N', type=int, default = 32, help='hiddens')
+  parser.add_argument('-S', type=int, default = 5, help='seq len')
+  parser.add_argument('-N', type=int, default = 64, help='hiddens')
 
   opt = parser.parse_args()
   S = opt.S
@@ -102,56 +102,66 @@ if __name__ == "__main__":
   save_arr('Weq.png', Weq)
   save_arr('Wek.png', Wek)
 
-  # 'stage' 2
-  vs = np.dot(Wev, es) # V
-  qs = np.dot(Weq, es) # Q
-  ks = np.dot(Wek, es) # K
+  for i in range(100000000):
+    # 'stage' 2
+    vs = np.dot(Wev, es) # V
+    qs = np.dot(Weq, es) # Q
+    ks = np.dot(Wek, es) # K
 
-  print('v')
-  print(vs.shape)
-  save_arr('vs.png', vs)
-  print('q')
-  print(qs.shape)
-  save_arr('qs.png', qs)
-  print('k')
-  print(ks.shape)
-  save_arr('ks.png', ks)
+    #print('v')
+    #print(vs.shape)
+    #save_arr('vs.png', vs)
+    #print('q')
+    #print(qs.shape)
+    #save_arr('qs.png', qs)
+    #print('k')
+    #print(ks.shape)
+    #save_arr('ks.png', ks)
 
-  # attention (Q, K, V)
-  att = np.dot(qs, ks.T)
-  print(att.shape)
-  save_arr('att.png', att)
+    # attention (Q, K, V)
+    att = np.dot(qs, ks.T)
+    #print(att.shape)
+    #save_arr('att.png', att)
 
-  att = att / np.sqrt(HN)
-  att_sm = softmax(att) # N x N
-  zs = np.dot(att_sm, vs) # Z ->  N x S
+    att = att / np.sqrt(HN)
+    att_sm = softmax(att) # N x N
+    zs = np.dot(att_sm, vs) # Z ->  N x S
 
-  # 'stage' 3
-  # fc
+    # 'stage' 3
+    # fc
 
-  save_arr('vs.png', vs)
-  save_arr('qs.png', qs)
-  save_arr('ks.png', ks)
-  save_arr('att.png', att)
-  save_arr('att_sm.png', att_sm)
-  save_arr('zs.png', zs)
+    #save_arr('vs.png', vs)
+    #save_arr('qs.png', qs)
+    #save_arr('ks.png', ks)
+    #save_arr('att.png', att)
+    #save_arr('att_sm.png', att_sm)
+    #save_arr('zs.png', zs)
 
-  # decoder
+    # decoder
 
-  ys = np.dot(Wd, zs)
+    ys = np.dot(Wd, zs)
 
-  save_arr('Wd.png', Wd)
-  save_arr('ys.png', ys)
+    #save_arr('Wd.png', Wd)
+    #save_arr('ys.png', ys)
 
-  ps = softmax(ys).T
-  save_arr('ps.png', ps)
+    ps = softmax(ys).T
+    if i % 1000000 == 0:
+      print('ps', 'ts')
+      print(ps[0])
+      print(ts[0])
+    #save_arr('ps.png', ps)
 
-  ce = np.sum(-np.log(ps[ts>0]))
-  print('ce = {}'.format(ce))
-  dy = ps - ts
-  dy = dy.T
-  dWd = np.dot(dy, zs.T)
-  dz = np.dot(Wd.T, dy)
-  save_arr('dz.png', dz)
-  save_arr('Wd.png', Wd)
-  save_arr('dWd.png', dWd)
+    ce = np.sum(-np.log(ps[ts>0]))
+    if i % 1000 == 0: print('ce = {}'.format(ce))
+    dy = ps - ts
+    dy = dy.T
+    dWd = np.dot(dy, zs.T)
+    dz = np.dot(Wd.T, dy)
+    #save_arr('dz.png', dz)
+    #save_arr('Wd.png', Wd)
+    #save_arr('dWd.png', dWd)
+
+    # adapt
+    lr = 1e-3
+    Wd = Wd - lr*dWd
+
