@@ -1,6 +1,6 @@
 # np-transformer
 
-This in an implementation of a single layer of the Transformer module as described in the paper 'Attention is all you need' (Vaswani et al.)[arxiv link][1].
+This in an implementation of a single layer of the Transformer module as described in the paper 'Attention is all you need' (Vaswani et al.) [arxiv link][1].
 
 It is a bare-minimum version which I found useful for my purposes.
 
