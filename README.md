@@ -6,6 +6,18 @@ It is a bare-minimum version which I found useful for my purposes.
 
 My main objective was to determine how the self-attention mechanism deals with some toy algorithmic problems and develop intuition on which tasks can or cannot be solved easily.
 
+This version is NOT optimized for performance. Some features are different and some are TODO.
+
+### Quick start:
+```
+  python3 transformer.py -t {copy, reverse, rotate, filter} [-l saved_model] [-S sequence length]
+```
+
+Example:
+```
+  python3 transformer.py -t reverse
+```
+
 ### Some background
 Some time ago I was very interested in memory-augmented architectures and their theoretical power when it comes to solving some simple problems requiring manipulating some external storage (Neural Turing Machine). Similarly to a CPU, we could focus on a given memory location based on its address or its content.
 Differentiable Neural Computer (DNC) was another incarnation of this idea, well described in the Nature paper[2]. Here's my toy numpy code which tests DNC on a character-level prediction task.
@@ -51,16 +63,29 @@ Let's go back to the copy example. Since all 'i' memory locations are independen
 
 Here are some experiments I tried and they give some insight into how things are learned.
 
-This version is NOT optimized for performance.
 
-### Usage:
+#### Some pictures
+
+The main thing I was looking at was of course the way self-attention works in those cases.
+From the original paper:
+
+<img src=./imgs/attention.png width=500/>
+
+The input to the attention module is `xs` of size N x M, where M is the input(sequence) and N is the attention module dimension. `xs` is fixed, but `vs`, `ks` and `qs` which as arrays for V, K and Q respectively are determined by learnable parameters `Wxv`, `Wxk` and `Wxq`.
+
 ```
-  python3 transformer.py -t {copy, reverse, rotate, filter} [-l saved_model] [-S sequence length]
+vs = np.dot(model['Wxv'].T, xs)                                                                            
+ks = np.dot(model['Wxk'].T, xs)
+qs = np.dot(model['Wxq'].T, xs)
 ```
 
-Example:
+Let's take a look at the inputs and learned weights for the copy task.
+
 ```
-  python3 transformer.py -t reverse
+  python3 transformer.py -t copy
 ```
+
+The images will be generated at the same time when checkpoints are saved (every 100000 iterations or so).
+<img src=./imgs/copy.png width=500/>
 
 [1]: https://arxiv.org/pdf/1706.03762.pdf
