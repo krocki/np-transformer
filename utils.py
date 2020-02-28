@@ -2,6 +2,7 @@
 # author: krocki
 
 import numpy as np
+import pickle
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
@@ -12,8 +13,16 @@ def save_arr_img(fname, arr):
   plt.xticks([]),plt.yticks([])
   plt.savefig("{:}".format(fname))
 
+def load_dict(fname):
+  with open(fname, 'rb') as f:
+    d = pickle.load(f)
+  print('loaded {}'.format(fname))
+  return d
+
 def save_dict(fname, d):
-  np.save(fname, d)
+  with open(fname, 'wb') as f:
+    pickle.dump(d, f)
+  print('saved {}'.format(fname))
 
 def save_dict_img(fname, dicts):
 
@@ -36,4 +45,5 @@ def save_dict_img(fname, dicts):
       n+=1
 
   plt.savefig('{:}'.format(fname))
+  print('saved {}'.format(fname))
 

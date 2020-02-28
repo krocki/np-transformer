@@ -6,14 +6,7 @@ from gradcheck import *
 from utils import *
 import argparse
 
-HN = 10 # the code layer
-M = 10 # input / output size
-lr = 1e-3 # learning rate
-max_iters=1000000000
-
-show_interval = 10000 # stats
-checkpoint = 1000000 # save model
-
+# positional encoding
 def pos_table(N, dim):
   def get_angle(x, h):
     return x / np.power(10000, 2 * (h // 2) / dim)
@@ -24,20 +17,12 @@ def pos_table(N, dim):
   tab[:, 1::2] = np.cos(tab[:, 1::2])
   return tab
 
-
-def relu(x):
-  y = x
-  y[y<0] = 0
-  return y
-
 def sigmoid(hs):
   return 1.0/(1.0 + np.exp(-hs))
 
-def ident(x):
-  return x
-
-def dident(dy):
-  return dy
+# for debug
+def ident(x): return x
+def dident(dy): return dy
 
 def softmax(ys):
   m0 = np.max(ys, axis=0)
@@ -48,9 +33,6 @@ def softmax(ys):
 
 def dsigmoid(h, dh):
   return dh * h * (1.0 - h)
-
-def drelu(y, dy):
-  return y * dy
 
 def dsoftmax(dy, y):
   dx = dy * y
@@ -68,14 +50,12 @@ def forward(xs, model):
   states['vs'] = vs
   states['qs'] = qs
   states['ks'] = ks
-  #####
 
   states['att'] = np.dot(qs, ks.T)
   states['att_sm'] = softmax(states['att'])
-  #states['att_sm'] = ident(states['att'])
-  #states['att_sm'] = ident(states['att'])
   zs0 = np.dot(states['att_sm'], vs)
   zs0 = sigmoid(zs0);
+  #residual
   #zs = xs + zs0
   zs = zs0
 
@@ -98,7 +78,6 @@ def backward(states, model, ts):
   grads = {}
   dy = states['ps'] - ts
   states['dy'] = dy
-  #dy = dsigmoid(states['ps'], dy)
 
   grads['Wzy'] = np.dot(states['zs'], dy.T)
   grads['zs'] = np.dot(model['Wzy'], dy)
@@ -122,25 +101,35 @@ def backward(states, model, ts):
 
   return grads
 
-#def apply_grads(model, grads, lr):
-#
-#  #rho = 0.9
-#  for t in model:
-#    model[t] -= grads[t] * lr
-#  #  mem[t] = rho * mem[t] + (1-rho) * grads[t] * grads[t]
-#  #  model[t] -= grads[t] * lr / np.sqrt(mem[t] + 1e-4)
-def apply_grads(model, grads, lr):
+# adadelta ?
+def apply_grads(model, mem, grads, lr):
 
+  rho = 0.9
   for t in model:
-    model[t] -= grads[t] * lr
-
+    mem[t] = rho * mem[t] + (1-rho) * grads[t] * grads[t]
+    model[t] -= grads[t] * lr / np.sqrt(mem[t] + 1e-4)
   return model
+
+# SGD
+# def apply_grads(model, grads, lr):
+# 
+#   for t in model:
+#     model[t] -= grads[t] * lr
+# 
+#   return model
+
+def dict_zeros_like(x):
+  y = {}
+  for x_id,arr in enumerate(x):
+    y[arr] = np.zeros_like(x[arr])
+  return y
 
 if __name__ == "__main__":
 
   parser = argparse.ArgumentParser(description='')
   parser.add_argument('-S', type=int, default = 5, help='seq len')
   parser.add_argument('-t', type=str, default = 'copy', help='task')
+  parser.add_argument('-l', type=str, default = None, help='load from')
   parser.add_argument('-g', action='store_true', help='gradcheck')
 
   opt = parser.parse_args()
@@ -148,21 +137,27 @@ if __name__ == "__main__":
   save_img = True
   do_gradcheck = opt.g
   S = opt.S # seq len
+  HN = 16 # the code layer
+  M = 8 # input / output size
+  lr = 1e-3 # learning rate
+  max_iters=1000000000
+  show_interval = 10000 # stats
+  checkpoint = 100000 # save model
 
   print(opt)
 
   datatype = np.float64 if do_gradcheck else np.float32
 
   model = {}
-  Wxv = np.random.randn(M*2, HN).astype(datatype) * 0.01
-  Wxk = np.random.randn(M*2, HN).astype(datatype) * 0.01
-  Wxq = np.random.randn(M*2, HN).astype(datatype) * 0.01
-  Wzy = np.random.randn(HN, M).astype(datatype) * 0.01
+  if opt.l:
+    model = load_dict(opt.l)
+  else:
+    model['Wxv'] = np.random.randn(M*2, HN).astype(datatype) * 0.01
+    model['Wxk'] = np.random.randn(M*2, HN).astype(datatype) * 0.01
+    model['Wxq'] = np.random.randn(M*2, HN).astype(datatype) * 0.01
+    model['Wzy'] = np.random.randn(HN, M).astype(datatype) * 0.01
 
-  model['Wxv']=Wxv
-  model['Wxk']=Wxk
-  model['Wxq']=Wxq
-  model['Wzy']=Wzy
+  mem = dict_zeros_like(model)
 
   i=0;
   smooth_loss = None
@@ -171,19 +166,18 @@ if __name__ == "__main__":
   xs = np.zeros((M,S), dtype=int)
   p = 0
 
-  I = np.eye(M).astype(datatype)
-  pos = pos_table(S, M)
+  I = np.eye(M).astype(datatype) # 1-hot encoding
+  pos = pos_table(S, M) # positional encoding
 
+  # I[0] is an 'invalid' token
   while i<max_iters:
 
     ix = np.random.randint(low=1, high=(M-1), size=(S))
     ts = np.zeros((M,S), dtype=datatype)
-    xs = np.zeros((M*2,S), dtype=datatype)
+    xs = np.zeros((M*2,S), dtype=datatype) # input = [ val, position ]
 
-    for j in range(S):
-      xs[:M, j] = I[ix[j]]
-
-    xs_raw = xs
+    xs[:M, :] = I[ix, :].T
+    xs_raw = xs[:M, :] # only value
     xs[M:, :] = pos.T
 
     if opt.t in ['copy', 'rotate', 'reverse', 'filter']:
@@ -193,8 +187,8 @@ if __name__ == "__main__":
         for j in range(S): ts[:,j] = I[ix[(j+1)%S]]
       if opt.t == 'reverse':
         for j in range(S): ts[:,j] = I[ix[S-j-1]]
-      if opt.t == 'filter':
-        for j in range(S): ts[:,j] = I[ix[j]] if ix[j] > 4 and ix[j] < 6 else I[ix[0]]
+      if opt.t == 'filter': # only copy values < M/2
+        for j in range(S): ts[:,j] = I[ix[j]] if (ix[j]<M//2) else I[0]
 
     else:
       print('unknown task {}'.format(opt.t))
@@ -209,24 +203,22 @@ if __name__ == "__main__":
     loss = lossfun(states, ts)
     smooth_loss = loss * 0.999 + smooth_loss * 0.001 if smooth_loss else loss
 
-
     grads = backward(states, model, ts)
 
     if (checkpoint > 0 and (i%checkpoint)==0):
       if save_img: save_dict_img('checkpoint_{}_{}.pdf'.format(i, opt.t), [model, grads, states])
-      save_dict('checkpoint_{}_{}.npy'.format(i, opt.t), model)
+      save_dict('checkpoint_{}_{}.pkl'.format(opt.t, i), model)
 
       if do_gradcheck:
         err=checkgrads(xs, model, forward, lossfun, ts, grads)
         print('\ngradcheck err {:2.9f}'.format(err))
         if err>1e-7:
           print('!!!')
-          #input('')
         else: print('OK')
       else: print('')
 
     if (i%show_interval==0):
       print('iter {:6}, loss = {:5.5f}'.format(i, smooth_loss))
 
-    model = apply_grads(model, grads, lr)
+    model = apply_grads(model, mem, grads, lr)
     i=i+1
