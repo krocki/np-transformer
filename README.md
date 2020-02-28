@@ -8,6 +8,12 @@ My main objective was to determine how the self-attention mechanism deals with s
 
 This version is NOT optimized for performance. Some features are different and some are TODO.
 
+### Summary
+- Positional encoding is important (it's quite obvious) to make it work
+- It seems to be more robust than other approaches I tried before
+- Surprisingly it works with one head and with only one layer, also without having the residual connection and normalization
+- Vanilla SGD did not work that well
+
 ### Quick start:
 ```
   python3 transformer.py -t {copy, reverse, rotate, filter} [-l saved_model] [-S sequence length]
@@ -79,6 +85,7 @@ ks = np.dot(model['Wxk'].T, xs)
 qs = np.dot(model['Wxq'].T, xs)
 ```
 
+#### Copy
 Let's take a look at the inputs and learned weights for the copy task.
 
 ```
@@ -87,5 +94,20 @@ Let's take a look at the inputs and learned weights for the copy task.
 
 The images will be generated at the same time when checkpoints are saved (every 100000 iterations or so).
 <img src=./imgs/copy.png width=500/>
+
+What we can see in the images above - input looks the same as the output - that's good, we have copied the sequence. In my implementation, I follow the original paper and compute the attention values (size N x N, att_sm in the pdf). Then `attention * vs` gives the output of the module `zs`. The `decoder` in my case takes `zs` and produces `ys = dot(Wzy.T, zs)`, so it's as simple as possible. Then it's normalized by softmax and the loss is based on the cross-entropy.
+
+By observing the input-key weights, we can see that indeed the attention module focuses on the location and ignores the content (upper part of the input vector is the original content, lower part is the positional encoding). `vs` weights on the other hand, learn to retrieve the content and ignore the location information.
+
+#### Filter
+
+This task is the same as copy, but write 'invalid' (value 0) when the value is above some threshold.
+<img src=./imgs/filter0.png width=400/>
+<img src=./imgs/filter1.png width=400/>
+
+#### Rotate
+
+#### Reverse
+
 
 [1]: https://arxiv.org/pdf/1706.03762.pdf
