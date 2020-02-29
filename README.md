@@ -69,8 +69,7 @@ Let's go back to the copy example. Since all 'i' memory locations are independen
 
 Here are some experiments I tried and they give some insight into how things are learned.
 
-
-#### Some pictures
+#### Some experiments
 
 The main thing I was looking at was of course the way self-attention works in those cases.
 From the original paper:
@@ -84,6 +83,10 @@ vs = np.dot(model['Wxv'].T, xs)
 ks = np.dot(model['Wxk'].T, xs)
 qs = np.dot(model['Wxq'].T, xs)
 ```
+
+I used the original positional encoding.
+
+<img src=./imgs/pe.png width=400/>
 
 #### Copy
 Let's take a look at the inputs and learned weights for the copy task.
@@ -101,13 +104,28 @@ By observing the input-key weights, we can see that indeed the attention module 
 
 #### Filter
 
-This task is the same as copy, but write 'invalid' (value 0) when the value is above some threshold.
+This task is the same as copy, but write 'invalid' (value 0) when the value is above some threshold. We can see that both the location and the content are relevant.
 <img src=./imgs/filter0.png width=400/>
 <img src=./imgs/filter1.png width=400/>
 
 #### Rotate
 
+Rotate left and carry the value shifted out into the last position.
+```
+[a b c d] -> [b c d a]
+```
+
+<img src=./imgs/rotate0.png width=400/>
+<img src=./imgs/rotate1.png width=400/>
+
 #### Reverse
 
+Reverse the array.
+```
+[a b c d] -> [d c b a]
+```
+
+<img src=./imgs/reverse0.png width=400/>
+<img src=./imgs/reverse1.png width=400/>
 
 [1]: https://arxiv.org/pdf/1706.03762.pdf
