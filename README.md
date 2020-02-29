@@ -104,14 +104,20 @@ By observing the input-key weights, we can see that indeed the attention module 
 
 #### Filter
 
-This task is the same as copy, but write 'invalid' (value 0) when the value is above some threshold. We can see that both the location and the content are relevant.
 
 ```
   python3 transformer.py -t filter
 ```
 
-<img src=./imgs/filter0.png width=400/>
-<img src=./imgs/filter1.png width=400/>
+This task is the same as copy, but write 'invalid' (value 0) when the value is above some threshold. We can see that both the location and the content are relevant. In the images below, the three initial values are greater than the threshold, we see that it has been correctly filtered and zeros appear on the output. The other 2 values are copied without a change.
+
+<img src=./imgs/filter0.png width=300/>
+
+We can see the clear pattern in weights which mark a mask for the values which are not desired.
+
+
+
+<img src=./imgs/filter1.png width=600/>
 
 #### Rotate
 
@@ -124,8 +130,8 @@ Rotate left and carry the value shifted out into the last position.
 [a b c d] -> [b c d a]
 ```
 
-<img src=./imgs/rotate0.png width=400/>
-<img src=./imgs/rotate1.png width=400/>
+<img src=./imgs/rotate0.png width=300/>
+<img src=./imgs/rotate1.png width=600/>
 
 #### Reverse
 
@@ -138,7 +144,11 @@ Reverse the array.
 [a b c d] -> [d c b a]
 ```
 
-<img src=./imgs/reverse0.png width=400/>
-<img src=./imgs/reverse1.png width=400/>
+<img src=./imgs/reverse0.png width=300/>
+
+Similar to the rotate and copy case, the content is not relevant, which is good from the generalization perpective.
+
+
+<img src=./imgs/reverse1.png width=600/>
 
 [1]: https://arxiv.org/pdf/1706.03762.pdf
