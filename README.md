@@ -116,7 +116,6 @@ This task is the same as copy, but write 'invalid' (value 0) when the value is a
 We can see the clear pattern in weights which mark a mask for the values which are not desired.
 
 
-
 <img src=./imgs/filter1.png width=600/>
 
 #### Rotate
@@ -131,6 +130,9 @@ Rotate left and carry the value shifted out into the last position.
 ```
 
 <img src=./imgs/rotate0.png width=300/>
+
+Similar to the copy case, the content is not relevant, which is good from the generalization perpective.
+
 <img src=./imgs/rotate1.png width=600/>
 
 #### Reverse
@@ -145,10 +147,6 @@ Reverse the array.
 ```
 
 <img src=./imgs/reverse0.png width=300/>
-
-Similar to the rotate and copy case, the content is not relevant, which is good from the generalization perpective.
-
-
 <img src=./imgs/reverse1.png width=600/>
 
 [1]: https://arxiv.org/pdf/1706.03762.pdf
