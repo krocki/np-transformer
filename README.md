@@ -105,10 +105,19 @@ By observing the input-key weights, we can see that indeed the attention module 
 #### Filter
 
 This task is the same as copy, but write 'invalid' (value 0) when the value is above some threshold. We can see that both the location and the content are relevant.
+
+```
+  python3 transformer.py -t filter
+```
+
 <img src=./imgs/filter0.png width=400/>
 <img src=./imgs/filter1.png width=400/>
 
 #### Rotate
+
+```
+  python3 transformer.py -t rotate
+```
 
 Rotate left and carry the value shifted out into the last position.
 ```
@@ -119,6 +128,10 @@ Rotate left and carry the value shifted out into the last position.
 <img src=./imgs/rotate1.png width=400/>
 
 #### Reverse
+
+```
+  python3 transformer.py -t reverse
+```
 
 Reverse the array.
 ```
