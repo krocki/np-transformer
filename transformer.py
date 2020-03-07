@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 # author: krocki
 import numpy as np
-
+from collections import OrderedDict
 from gradcheck import *
 from utils import *
+import time
 import argparse
+
+multi_layer = False
 
 # positional encoding
 def pos_table(N, dim):
@@ -22,7 +25,14 @@ def sigmoid(hs):
 
 # for debug
 def ident(x): return x
-def dident(dy): return dy
+def dident(d, dy): return dy
+
+def relu(x):
+  return np.maximum(x, 0)
+
+def drelu(y, dy):
+  dy[y<=0] = 0
+  return dy
 
 def softmax(ys):
   m0 = np.max(ys, axis=0)
@@ -42,62 +52,123 @@ def dsoftmax(dy, y):
 
 def forward(xs, model):
 
-  states = {}; states['xs'] = xs
-  vs = np.dot(model['Wxv'].T, xs)
-  ks = np.dot(model['Wxk'].T, xs)
-  qs = np.dot(model['Wxq'].T, xs)
+  states = {};
 
-  states['vs'] = vs
-  states['qs'] = qs
-  states['ks'] = ks
+  # 0
+  states['xs'] = xs
+  vs0 = np.dot(model['Wxv0'].T, xs)
+  ks0 = np.dot(model['Wxk0'].T, xs)
+  qs0 = np.dot(model['Wxq0'].T, xs)
 
-  states['att'] = np.dot(qs, ks.T)
-  states['att_sm'] = softmax(states['att'])
-  zs0 = np.dot(states['att_sm'], vs)
-  zs0 = sigmoid(zs0);
-  #residual
-  #zs = xs + zs0
-  zs = zs0
+  states['vs0'] = vs0
+  states['qs0'] = qs0
+  states['ks0'] = ks0
 
+  att0 = np.dot(qs0, ks0.T)
+  states['att0_sm'] = softmax(att0)
+  zs0_pre = np.dot(states['att0_sm'], vs0)
+  zs0 = sigmoid(zs0_pre); #residual #zs = xs + zs0
+  #zs0 = zs0_pre
+
+  states['zs0_pre'] = zs0_pre
   states['zs0'] = zs0
-  states['zs'] = zs
 
-  ys = np.dot(model['Wzy'].T, zs)
-  ps = softmax(ys);
+  if multi_layer:
+    # 1
+    vs1 = np.dot(model['Wxv1'].T, zs0)
+    ks1 = np.dot(model['Wxk1'].T, zs0)
+    qs1 = np.dot(model['Wxq1'].T, zs0)
+
+    states['vs1'] = vs1
+    states['qs1'] = qs1
+    states['ks1'] = ks1
+
+    att1 = np.dot(qs1, ks1.T)
+    states['att1_sm'] = softmax(att1)
+    zs1_pre = np.dot(states['att1_sm'], vs1)
+    zs1_local = sigmoid(zs1_pre);
+    if residual:
+      zs1 = zs0 + zs1_local
+    else:
+      zs1 = zs1_local
+
+    states['zs1_pre'] = zs1_pre
+    states['zs1'] = zs1
+    #
+    ys = np.dot(model['Wzy'].T, zs1)
+  else:
+    ys = np.dot(model['Wzy'].T, zs0)
+
+  ps = sigmoid(ys);
   states['ps'] = ps
   states['ys'] = ys
 
   return states
 
 def lossfun(states, ts):
-  ce = -np.log(states['ps'][ts>0])
-  return np.sum(ce)
+  #ce = -np.log(states['ps'][ts>0])
+  #return np.sum(ce)
+  #mse
+  mse = (ts - states['ps']) ** 2
+  return np.sum(mse)
 
 def backward(states, model, ts):
 
-  grads = {}
-  dy = states['ps'] - ts
+  grads = dict_zeros_like(model)
+  #MSE
+  dy = 2.0 * (states['ps'] - ts)
+  dy = dsigmoid(states['ps'], dy)
+  #CE
+  #dy = states['ps'] - ts
   states['dy'] = dy
 
-  grads['Wzy'] = np.dot(states['zs'], dy.T)
-  grads['zs'] = np.dot(model['Wzy'], dy)
+  if multi_layer:
+    grads['Wzy'] = np.dot(states['zs1'], dy.T)
+    grads['zs1'] = np.dot(model['Wzy'], dy)
 
-  grads['zs'] = dsigmoid(states['zs0'], grads['zs'])
+    grads['zs1'] = dsigmoid(states['zs1'], grads['zs1'])
 
-  datt_sm = np.dot(grads['zs'], states['vs'].T)
+    datt1_sm = np.dot(grads['zs1'], states['vs1'].T)
+
+    # backprop through softmax
+    datt1 = dsoftmax(datt1_sm, states['att1_sm'])
+    grads['datt1_sm'] = datt1_sm
+    #grads['datt1'] = datt1
+
+    grads['vs1'] = np.dot(states['att1_sm'].T, grads['zs1'])
+    grads['qs1'] = np.dot(datt1, states['ks1'])
+    grads['ks1'] = np.dot(datt1.T, states['qs1'])
+
+    grads['Wxv1'] = np.dot(states['zs0'], grads['vs1'].T)
+    grads['Wxq1'] = np.dot(states['zs0'], grads['qs1'].T)
+    grads['Wxk1'] = np.dot(states['zs0'], grads['ks1'].T)
+
+    grads['zs0']  = np.dot(model['Wxv1'], grads['vs1'])
+    grads['zs0'] += np.dot(model['Wxq1'], grads['qs1'])
+    grads['zs0'] += np.dot(model['Wxk1'], grads['ks1'])
+  else:
+    grads['Wzy'] = np.dot(states['zs0'], dy.T)
+    grads['zs0'] = np.dot(model['Wzy'], dy)
+
+  grads['zs0'] = dsigmoid(states['zs0'], grads['zs0'])
+  datt0_sm = np.dot(grads['zs0'], states['vs0'].T)
 
   # backprop through softmax
-  datt = dsoftmax(datt_sm, states['att_sm'])
-  grads['datt_sm'] = datt_sm
-  grads['datt'] = datt
+  datt0 = dsoftmax(datt0_sm, states['att0_sm'])
+  grads['datt0_sm'] = datt0_sm
+  #grads['datt0'] = datt0
 
-  grads['vs'] = np.dot(states['att_sm'].T, grads['zs'])
-  grads['qs'] = np.dot(datt, states['ks'])
-  grads['ks'] = np.dot(datt.T, states['qs'])
+  grads['vs0'] = np.dot(states['att0_sm'].T, grads['zs0'])
+  grads['qs0'] = np.dot(datt0, states['ks0'])
+  grads['ks0'] = np.dot(datt0.T, states['qs0'])
 
-  grads['Wxv'] = np.dot(states['xs'], grads['vs'].T)
-  grads['Wxq'] = np.dot(states['xs'], grads['qs'].T)
-  grads['Wxk'] = np.dot(states['xs'], grads['ks'].T)
+  grads['Wxv0'] = np.dot(states['xs'], grads['vs0'].T)
+  grads['Wxq0'] = np.dot(states['xs'], grads['qs0'].T)
+  grads['Wxk0'] = np.dot(states['xs'], grads['ks0'].T)
+
+  #grads['xs']  = np.dot(model['Wxv0'], grads['vs0'])
+  #grads['xs'] += np.dot(model['Wxq0'], grads['qs0'])
+  #grads['xs'] += np.dot(model['Wxk0'], grads['ks0'])
 
   return grads
 
@@ -107,7 +178,7 @@ def apply_grads(model, mem, grads, lr):
   rho = 0.9
   for t in model:
     mem[t] = rho * mem[t] + (1-rho) * grads[t] * grads[t]
-    model[t] -= grads[t] * lr / np.sqrt(mem[t] + 1e-4)
+    model[t] -= grads[t] * lr / np.sqrt(mem[t] + 1e-5)
   return model
 
 # SGD
@@ -128,6 +199,11 @@ if __name__ == "__main__":
 
   parser = argparse.ArgumentParser(description='')
   parser.add_argument('-S', type=int, default = 5, help='seq len')
+  parser.add_argument('-M', type=int, default = 8, help='input width')
+  parser.add_argument('-N', type=int, default = 8, help='inner width')
+  parser.add_argument('-r', type=float, default = 1e-3, help='learning rate')
+  parser.add_argument('-v', type=int, default = 10000, help='show interval')
+  parser.add_argument('-c', type=int, default = 100000, help='checkpoint interval')
   parser.add_argument('-t', type=str, default = 'copy', help='task')
   parser.add_argument('-l', type=str, default = None, help='load from')
   parser.add_argument('-g', action='store_true', help='gradcheck')
@@ -137,25 +213,32 @@ if __name__ == "__main__":
   save_img = True
   do_gradcheck = opt.g
   S = opt.S # seq len
-  HN = 16 # the code layer
-  M = 8 # input / output size
-  lr = 1e-3 # learning rate
+  HN = opt.N # the code layer
+  M = opt.M # input / output size
+  lr = opt.r # learning rate
+  show_interval = opt.v # stats
+  checkpoint = opt.c # save model
   max_iters=1000000000
-  show_interval = 10000 # stats
-  checkpoint = 100000 # save model
 
   print(opt)
 
   datatype = np.float64 if do_gradcheck else np.float32
 
-  model = {}
+  model = OrderedDict()
   if opt.l:
     model = load_dict(opt.l)
   else:
-    model['Wxv'] = np.random.randn(M*2, HN).astype(datatype) * 0.01
-    model['Wxk'] = np.random.randn(M*2, HN).astype(datatype) * 0.01
-    model['Wxq'] = np.random.randn(M*2, HN).astype(datatype) * 0.01
-    model['Wzy'] = np.random.randn(HN, M).astype(datatype) * 0.01
+
+    model['Wxv0'] = np.random.randn(M*2, HN).astype(datatype) * 0.02
+    model['Wxk0'] = np.random.randn(M*2, HN).astype(datatype) * 0.02
+    model['Wxq0'] = np.random.randn(M*2, HN).astype(datatype) * 0.02
+
+    if multi_layer:
+      model['Wxv1'] = np.random.randn(M, HN).astype(datatype) * 0.02
+      model['Wxk1'] = np.random.randn(M, HN).astype(datatype) * 0.02
+      model['Wxq1'] = np.random.randn(M, HN).astype(datatype) * 0.02
+
+    model['Wzy'] = np.random.randn(HN, M).astype(datatype) * 0.02
 
   mem = dict_zeros_like(model)
 
@@ -169,31 +252,52 @@ if __name__ == "__main__":
   I = np.eye(M).astype(datatype) # 1-hot encoding
   pos = pos_table(S, M) # positional encoding
 
-  # I[0] is an 'invalid' token
+  fwd_time, bwd_time, app_time = 0,0,0
+
   while i<max_iters:
 
     ix = np.random.randint(low=1, high=(M-1), size=(S))
     ts = np.zeros((M,S), dtype=datatype)
     xs = np.zeros((M*2,S), dtype=datatype) # input = [ val, position ]
 
-    xs[:M, :] = I[ix, :].T
+    #xs[:M, :] = I[ix, :].T
+    xs[:M, :] = np.random.rand(M, S).astype(datatype) > 0.75
     xs_raw = xs[:M, :] # only value
     xs[M:, :] = pos.T
-
-    if opt.t in ['copy', 'rotate', 'reverse', 'filter']:
+    zero = np.zeros((M,1)).astype(datatype)
+    tasks = ['copy', 'rotate', 'reverse', 'filter', 'filter2', 'filter3', 'filter4', 'sub']
+    if opt.t in tasks:
       if opt.t == 'copy':
-        for j in range(S): ts[:,j] = I[ix[j]]
+        for j in range(S): ts[:,j] = xs_raw[:,j]
       if opt.t == 'rotate':
-        for j in range(S): ts[:,j] = I[ix[(j+1)%S]]
+        for j in range(S): ts[:,j] = xs_raw[:,(j+1)%S]
       if opt.t == 'reverse':
-        for j in range(S): ts[:,j] = I[ix[S-j-1]]
-      if opt.t == 'filter': # only copy values < M/2
-        for j in range(S): ts[:,j] = I[ix[j]] if (ix[j]<M//2) else I[0]
-
+        for j in range(S): ts[:,j] = xs_raw[:,S-j-1]
+      if opt.t == 'filter': # only copy some bits
+        for j in range(S): ts[:,j] = xs_raw[:,j]; ts[:3,j]=0; ts[6:,j]=0
+      if opt.t == 'filter2': # only copy some if one of the first bits set
+        for j in range(S): ts[:,j] = xs_raw[:,j] if xs_raw[1,j]==1 or xs_raw[0,j]==1 else 0
+      if opt.t == 'filter3': # only copy some if the first bits set and range
+        for j in range(S):
+          ts[:,j] = xs_raw[:,j] if xs_raw[0,j]==1 else 0
+          ts[:2,j]=0; ts[M-4:j]=0
+      if opt.t == 'filter4': # only copy some if the sum of the bits set and range
+        for j in range(S):
+          ts[:,j] = xs_raw[:,j] if np.sum(xs_raw[:,j])>3 else 0
+          ts[:2,j]=0; ts[M-4:j]=0
+      if opt.t == 'sub': # max of odd and even
+        for j in range(S//2):
+          ts[:,2*j] = xs_raw[:,2*j] - xs_raw[:,2*j+1]
+          ts[:,2*j+1] = xs_raw[:, 2*j+1]
+          ts[ts<0] = 0
     else:
       print('unknown task {}'.format(opt.t))
+      print('defined tasks {}'.format(tasks))
 
+    t0 = time.perf_counter()
     states = forward(xs, model)
+    t1 = time.perf_counter()
+    fwd_time += t1 - t0
     states['xs'] = xs
     states['pos'] = pos.T
 
@@ -201,14 +305,14 @@ if __name__ == "__main__":
     states['ts'] = ts
 
     loss = lossfun(states, ts)
-    smooth_loss = loss * 0.999 + smooth_loss * 0.001 if smooth_loss else loss
+    smooth_loss = loss * 0.99999 + smooth_loss * 0.00001 if smooth_loss else loss
 
+    t0 = time.perf_counter()
     grads = backward(states, model, ts)
+    t1 = time.perf_counter()
+    bwd_time += t1 - t0
 
     if (checkpoint > 0 and (i%checkpoint)==0):
-      if save_img: save_dict_img('checkpoint_{}_{}.pdf'.format(i, opt.t), [model, grads, states])
-      save_dict('checkpoint_{}_{}.pkl'.format(opt.t, i), model)
-
       if do_gradcheck:
         err=checkgrads(xs, model, forward, lossfun, ts, grads)
         print('\ngradcheck err {:2.9f}'.format(err))
@@ -217,8 +321,14 @@ if __name__ == "__main__":
         else: print('OK')
       else: print('')
 
-    if (i%show_interval==0):
-      print('iter {:6}, loss = {:5.5f}'.format(i, smooth_loss))
+      if save_img: save_dict_img('checkpoint_{}_{}.pdf'.format(i, opt.t), [model, states, grads])
+      save_dict('checkpoint_{}_{}.pkl'.format(opt.t, i), model)
 
+    if (i>0 and i%show_interval==0):
+      print('iter {:6}, loss = {:5.5f}, {:4.9f} {:4.9f} {:4.9f}'.format(i, smooth_loss, fwd_time/i, bwd_time/i, app_time/i))
+
+    t0 = time.perf_counter()
     model = apply_grads(model, mem, grads, lr)
+    t1 = time.perf_counter()
+    app_time += t1 - t0
     i=i+1
